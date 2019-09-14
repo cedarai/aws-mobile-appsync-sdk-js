@@ -167,7 +167,7 @@ export class SubscriptionHandshakeLink extends ApolloLink {
             if (errorCode !== 0) {
                 topics.forEach(t => {
                     if (this.topicObservers.has(t)) {
-                        this.topicObservers.get(t).forEach(observer => observer.error({ ...args, [PERMANENT_ERROR_KEY]: true }));
+                        this.topicObservers.get(t).forEach(observer => observer.error(args));
                     }
                 });
             }

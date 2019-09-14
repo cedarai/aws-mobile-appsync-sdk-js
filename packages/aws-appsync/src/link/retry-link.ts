@@ -22,10 +22,10 @@ export const getEffectDelay = (_action: OfflineAction, retries: number) => {
     return delay <= MAX_DELAY_MS ? delay : null;
 };
 
-export const createRetryLink = (origLink: ApolloLink) => {
+export const createRetryLink = (origLink: ApolloLink, retryLinkOption?: RetryLink.Options) => {
     let delay;
 
-    const retryLink = new RetryLink({
+    let defaultRetryLinkOption = {
         attempts: (count, operation, error) => {
             const { [PERMANENT_ERROR_KEY]: permanent = false } = error;
             const { [SKIP_RETRY_KEY]: skipRetry = false } = operation.variables;
@@ -51,7 +51,10 @@ export const createRetryLink = (origLink: ApolloLink) => {
             return delay <= MAX_DELAY_MS;
         },
         delay: (_count, _operation, _error) => delay,
-    });
+    };
+    let _retryLinkOption = retryLinkOption || defaultRetryLinkOption;
+
+    const retryLink = new RetryLink(_retryLinkOption);
 
     const link = ApolloLink.from([
         retryLink,
