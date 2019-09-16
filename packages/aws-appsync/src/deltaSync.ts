@@ -19,6 +19,7 @@ import { DocumentNode, print, OperationDefinitionNode, FieldNode, ExecutionResul
 import { getOpTypeFromOperationName, CacheOperationTypes, getUpdater, QueryWithVariables } from "./helpers/offline";
 import { boundSaveSnapshot, replaceUsingMap, EnqueuedMutationEffect, offlineEffectConfig as mutationsConfig } from "./link/offline-link";
 import { CONTROL_EVENTS_KEY } from "./link/subscription-handshake-link";
+import { resolve } from "url";
 
 const logger = rootLogger.extend('deltasync');
 
@@ -265,53 +266,51 @@ const effect = async <TCache extends NormalizedCacheObject>(
         //#region Subscription
         const subsControlLogger = logger.extend('subsc-control');
 
-        await new Promise(resolve => {
-            if (subscriptionQuery && subscriptionQuery.query) {
-                const { query, variables } = subscriptionQuery;
+        if (subscriptionQuery && subscriptionQuery.query) {
+            const { query, variables } = subscriptionQuery;
 
-                subscription = client.subscribe<FetchResult, any>({
-                    query: query,
-                    variables: {
-                        ...variables,
-                        [SKIP_RETRY_KEY]: true,
-                        [CONTROL_EVENTS_KEY]: true,
-                    },
-                }).filter(data => {
-                    const { extensions: { controlMsgType = undefined, controlMsgInfo = undefined } = {} } = data;
-                    const isControlMsg = typeof controlMsgType !== 'undefined';
+            subscription = client.subscribe<FetchResult, any>({
+                query: query,
+                variables: {
+                    ...variables,
+                    [SKIP_RETRY_KEY]: true,
+                    [CONTROL_EVENTS_KEY]: true,
+                },
+            }).filter(data => {
+                const { extensions: { controlMsgType = undefined, controlMsgInfo = undefined } = {} } = data;
+                const isControlMsg = typeof controlMsgType !== 'undefined';
 
-                    if (controlMsgType) {
-                        subsControlLogger(controlMsgType, controlMsgInfo);
+                if (controlMsgType) {
+                    subsControlLogger(controlMsgType, controlMsgInfo);
 
-                        if (controlMsgType === 'CONNECTED') {
-                            resolve();
-                        }
+                    if (controlMsgType === 'CONNECTED') {
+                        // resolve();
+                    }
+                }
+
+                return !isControlMsg;
+            }).subscribe({
+                next: data => {
+                    subscriptionProcessor.enqueue(data);
+                },
+                error: (err) => {
+                    // resolve();
+
+                    error = err;
+                    unsubscribeAll();
+
+                    if (graphQLResultHasError(err) || err.graphQLErrors) {
+                        // send error to observable, unsubscribe all, do not enqueue
+                        observer.error(err);
+                        return;
                     }
 
-                    return !isControlMsg;
-                }).subscribe({
-                    next: data => {
-                        subscriptionProcessor.enqueue(data);
-                    },
-                    error: (err) => {
-                        resolve();
-
-                        error = err;
-                        unsubscribeAll();
-
-                        if (graphQLResultHasError(err) || err.graphQLErrors) {
-                            // send error to observable, unsubscribe all, do not enqueue
-                            observer.error(err);
-                            return;
-                        }
-
-                        enqueueAgain();
-                    }
-                });
-            } else {
-                resolve();
-            }
-        });
+                    enqueueAgain();
+                }
+            });
+        } else {
+            // resolve();
+        }
 
         if (error) {
             throw error;
